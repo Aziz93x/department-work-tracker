@@ -1,0 +1,10 @@
+'use client';
+import {Download,FileCheck2,Upload,Paperclip} from 'lucide-react';
+import type {WorkFile} from '@/lib/trainer-domain';
+export function EvidenceFiles({files}:{files:WorkFile[]}){return <div className="evidence-links">{files.map(f=><a key={f.id} href={'/api/trainer/workspace/files/'+f.id}><FileCheck2 size={18}/><span>{f.original_filename}<small>{(f.byte_size/1024).toFixed(0)} كيلوبايت{f.purpose==='decision'?' · قرار التكليف':''}</small></span><Download size={16}/></a>)}</div>}
+export function EvidencePicker({busy,onFiles,label='إضافة شواهد',count=0}:{busy:boolean;onFiles:(files:File[])=>void;label?:string;count?:number}){return <label className={'file-button evidence-picker '+(busy?'disabled':'')}><Upload size={18}/><span>{count?'إضافة شواهد أخرى':label}<small>اختر ملفًا أو عدة ملفات · حتى ١٠ ميغابايت لكل ملف</small></span><input type="file" multiple disabled={busy} onChange={e=>{const files=Array.from(e.target.files||[]);if(files.length)onFiles(files);e.target.value=''}}/>{count>0&&<b><Paperclip size={14}/>{count}</b>}</label>}
+export function validateEvidenceFiles(files:File[]){if(files.some(f=>f.size===0||f.size>10*1024*1024))throw new Error('يجب أن يكون كل شاهد غير فارغ وألا يتجاوز حجمه ١٠ ميغابايت.');}
+export async function uploadEvidence(csrf:string,category:string,itemKey:string,courseKey:string,files:File[],purpose='evidence'){
+ validateEvidenceFiles(files);const uploaded:{id:string;recordId:string}[]=[];
+ for(const file of files){const form=new FormData();form.set('file',file);form.set('category',category);form.set('itemKey',itemKey);form.set('courseKey',courseKey);form.set('purpose',purpose);const response=await fetch('/api/trainer/workspace/files',{method:'POST',headers:{'X-CSRF-Token':csrf},body:form}),result=await response.json() as {id:string;recordId:string;error?:string};if(!response.ok)throw new Error((result.error||'تعذر رفع الملف.')+(uploaded.length?' حُفظت '+uploaded.length+' من الشواهد قبل التعثر، ويمكن استكمال الباقي.':''));uploaded.push(result)}return uploaded;
+}

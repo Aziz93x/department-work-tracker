@@ -1,0 +1,76 @@
+{
+  "version": "7",
+  "dialect": "sqlite",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "6",
+      "when": 1790728775534,
+      "tag": "0000_lame_whiplash",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1790731003663,
+      "tag": "0001_needy_star_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790735566086,
+      "tag": "0002_wonderful_sandman",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790737100401,
+      "tag": "0003_glorious_dakota_north",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1790830819322,
+      "tag": "0004_ordinary_squirrel_girl",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1790928000000,
+      "tag": "0005_trainer_workspace",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1790928001000,
+      "tag": "0006_forced_password_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1790852193778,
+      "tag": "0007_trainer_tasks_office_hours",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1790852753713,
+      "tag": "0008_trainer_global_records",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1790856000000,
+      "tag": "0009_trainer_file_purpose",
+      "breakpoints": true
+    }
+  ]
+}

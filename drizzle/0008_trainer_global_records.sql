@@ -1,0 +1,2 @@
+UPDATE trainer_work_records SET course_key='general' WHERE category='advising' AND course_key<>'general' AND (SELECT COUNT(*) FROM trainer_work_records r WHERE r.trainer_id=trainer_work_records.trainer_id AND r.category=trainer_work_records.category AND r.item_key=trainer_work_records.item_key)=1;
+UPDATE trainer_work_records SET course_key='general',item_key=id WHERE category IN ('development','exchange');
