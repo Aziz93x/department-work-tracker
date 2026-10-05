@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-const base='http://127.0.0.1:5173';
+const base=process.env.TEST_URL||'http://127.0.0.1:5173';
+assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'Tests must target loopback only');
 const accounts=JSON.parse(readFileSync('.local/test-accounts.json','utf8'));
 const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9Z1ioAAAAASUVORK5CYII=','base64'));
 async function login(account){const r=await fetch(base+'/api/auth/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({username:account.username,password:account.password})});assert.equal(r.status,200);const data=await r.json();return {cookie:r.headers.get('set-cookie').split(';')[0],csrf:data.csrf}}
@@ -26,6 +27,6 @@ try{
  assert.equal((await call('department/actions/evidence/'+evidenceId,trainer)).status,403);
  assert.equal((await call('department/actions/evidence/'+evidenceId,deputy)).status,403);
  const visible=await call('department/actions',head);assert.ok(visible.data.actions.find(x=>x.id===ids[1]).evidence.some(x=>x.id===evidenceId));
- const departmentDashboard=await call('dashboard',deputy);assert.equal(departmentDashboard.status,200);assert.ok('rayat'in departmentDashboard.data);assert.equal((await call('dashboard',trainer)).data.rayat,null);
+ const departmentDashboard=await call('dashboard',deputy);assert.equal(departmentDashboard.status,200);assert.ok('rayat'in departmentDashboard.data);const trainerLink=(await call('dashboard',trainer)).data.rayat;assert.deepEqual(Object.keys(trainerLink),['linked']);assert.equal(typeof trainerLink.linked,'boolean');
  console.log('Department initiatives, improvement plans, evidence and permissions passed.');
 }finally{if(ids.length)cleanup(ids,evidenceId)}

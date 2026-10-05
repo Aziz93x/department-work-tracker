@@ -1,4 +1,5 @@
 import {calculateGrades,courseCategories,criteria,trainingMethods} from './trainer-domain';
+import {initializeDepartment} from './initial-setup';
 import {accountTransferSchema,planAccountTransfer} from './account-transfer';
 import {portfolioDocument} from './portfolio';
 import {env} from 'cloudflare:workers';
@@ -50,6 +51,7 @@ export async function handle(req:Request){try{
  const path=new URL(req.url).pathname.replace(/^\/api\//,'').replace(/\/$/,'');const method=req.method;
  if(!['GET','POST','PATCH','PUT'].includes(method))fail(405,'طريقة الطلب غير مسموحة.');
  if(method!=='GET'&&req.headers.get('origin')!==new URL(req.url).origin)fail(403,'مصدر الطلب غير مسموح.');
+ if(path==='system/initialize'&&method==='POST')return await initializeDepartment(req,db());
  if(path==='auth/login'&&method==='POST'){
   const input=z.object({username:z.string().trim().toLowerCase().min(1).max(80),password:z.string().min(1).max(128)}).strict().parse(await body(req));
   const key=digest('login:'+input.username),now=Date.now();
@@ -412,4 +414,11 @@ export async function handle(req:Request){try{
  }
  if(path==='audit'&&method==='GET'){head(user);return json({events:(await db().prepare('SELECT a.id,a.action,a.created_at,u.display_name AS actor FROM audit_log a LEFT JOIN users u ON u.id=a.actor_id ORDER BY a.created_at DESC LIMIT 50').all()).results})}
  fail(404,'المسار غير موجود.');
- }catch(error){if(error instanceof HttpError)return json({error:error.message},error.status);if(error instanceof z.ZodError)return json({error:'راجع الحقول المطلوبة وصيغ البيانات، ثم حاول مجددًا.'},400);console.error('Application request failed',error);return json({error:'تعذر إتمام الطلب. حاول مجددًا.'},503)}}
+ }catch(error){if(error instanceof HttpError)return json({error:error.message},error.status);if(error instanceof z.ZodError)return json({error:'راجع الحقول المطلوبة وصيغ البيانات، ثم حاول مجددًا.'},400);console.error('Application request failed',error);return json({error:'تعذر إتمام الطلب. حاول مجددًا.'},503)}finally{
+  // Finish small rejected bodies before returning on a reused connection.
+  // Keep the discard bounded and never collect the rejected data in memory.
+  if(req.body&&!req.bodyUsed&&!req.body.locked){
+   let discarded=0;
+   try{await req.body.pipeTo(new WritableStream<Uint8Array>({write(chunk){discarded+=chunk.byteLength;if(discarded>64000)throw new Error('Discard limit exceeded')}}),{signal:AbortSignal.timeout(1000)})}catch{/* Preserve the original response on disconnect, size or time limit. */}
+  }
+ }}

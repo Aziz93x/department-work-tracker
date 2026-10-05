@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
-const base='http://127.0.0.1:5173';
+const base=process.env.TEST_URL||'http://127.0.0.1:5173';
+assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'Tests must target loopback only');
 const accounts=JSON.parse(readFileSync('.local/test-accounts.json','utf8'));
 const png=Uint8Array.from(Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO9Z1ioAAAAASUVORK5CYII=','base64'));
 const proof={evidenceId:'',versionIds:[],avatarKey:'',avatarPrevious:null,avatarPreviousAt:null,trainerId:accounts[2].id,headId:accounts[0].id};

@@ -37,7 +37,8 @@ const sf06=csv(['"رقم التواصل","اسم المتدرب","الرقم ا�
 assert.deepEqual(inspectRayat('SF06',sf06).summary,{rows:0,departmentRows:0,trainees:0});
 
 const base=process.env.TEST_URL||'http://127.0.0.1:5173';
-assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/);
+assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'Tests must target loopback only');
+
 const accounts=JSON.parse(readFileSync('.local/test-accounts.json','utf8'));
 for(const account of accounts){
  const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'Origin':base,'Content-Type':'application/json'},body:JSON.stringify({username:account.username,password:account.password})});
