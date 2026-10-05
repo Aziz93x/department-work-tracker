@@ -7,7 +7,7 @@ export const metricKeys=['trainees','sections','courses','trainers'] as const;
 export const defaultLayout={density:'comfortable' as const,hidden:[] as string[]};
 export const layoutSchema=z.object({density:z.enum(['comfortable','compact']),hidden:z.array(z.enum(metricKeys)).max(4)}).strict();
 export const usernameSchema=z.string().trim().toLowerCase().regex(/^[a-z0-9._-]{3,40}$/);
-export const passwordSchema=z.string().min(12).max(128);
+export const passwordSchema=z.string().min(6).max(128);
 const staffNumberSchema=z.string().trim().regex(/^\d{3,12}$/).nullable().optional();
 export const createUserSchema=z.object({username:usernameSchema,display_name:z.string().trim().min(2).max(80),password:passwordSchema,role:z.enum(roles),is_test:z.boolean().default(false),must_change_password:z.boolean().default(false),staff_number:staffNumberSchema}).strict().refine(v=>!v.staff_number||v.role==='trainer',{message:'يرتبط الرقم الوظيفي بحساب مدرب فقط.',path:['staff_number']});
 export const updateUserSchema=z.object({display_name:z.string().trim().min(2).max(80).optional(),role:z.enum(roles).optional(),active:z.boolean().optional(),password:passwordSchema.optional(),staff_number:staffNumberSchema}).strict().refine(v=>!v.staff_number||!v.role||v.role==='trainer',{message:'يرتبط الرقم الوظيفي بحساب مدرب فقط.',path:['staff_number']});
