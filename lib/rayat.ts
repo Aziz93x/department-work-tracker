@@ -1,3 +1,5 @@
+import {readCsv} from './csv';
+import {canonicalStaffNumber,courseIdentity,normalizeReportTerm} from './identity';
 export const reportKinds={
  SF01:{label:'تسجيل المتدربين في الشعب',required:['الفصل التدريبي','القسم','المقرر','الرقم المرجعي','رقم المتدرب','حالة تسجيل','حالة المتدرب']},
  SS01:{label:'جداول الشعب التدريبية',required:['الفصل التدريبي','القسم','المقرر','الرقم المرجعي','نوع الجدولة','سعة','مسجلين','متبقي','رقم المدرب']},
@@ -11,31 +13,14 @@ export const maxRayatBytes=8*1024*1024;
 // Confirmed by the department for term 144710: these two scheduled sections are remote.
 const confirmedRemoteSections144710=new Set(['65557','65559']);
 
-function parseCsv(text:string):string[][]{
- const rows:string[][]=[];let row:string[]=[],field='',quoted=false,closed=false;
- for(let i=0;i<text.length;i++){
-  const ch=text[i];
-  if(quoted){if(ch==='"'){if(text[i+1]==='"'){field+='"';i++}else{quoted=false;closed=true}}else field+=ch;continue}
-  if(ch==='"'){if(field||closed)throw new Error('تنسيق CSV غير صالح.');quoted=true;continue}
-  if(ch===','){row.push(field);field='';closed=false;continue}
-  if(ch==='\n'||ch==='\r'){
-   if(ch==='\r'&&text[i+1]==='\n')i++;
-   row.push(field);if(row.some(v=>v!==''))rows.push(row);
-   row=[];field='';closed=false;continue
-  }
-  if(closed)throw new Error('تنسيق CSV غير صالح.');
-  field+=ch;
- }
- if(quoted)throw new Error('علامة اقتباس غير مغلقة في CSV.');
- row.push(field);if(row.some(v=>v!==''))rows.push(row);
- return rows;
-}
+const parseCsv=(text:string)=>readCsv(text).filter(row=>row.some(v=>v!==''));
+export type ParsedReport={format:'rayat-parsed';rows:string[][]};
+export type ReportInput=Uint8Array|ParsedReport;
+const decodedReports=new WeakMap<Uint8Array,string[][]>();
+function decodeReport(input:ReportInput){if(!(input instanceof Uint8Array))return input.rows;let rows=decodedReports.get(input);if(!rows){rows=parseCsv(new TextDecoder('utf-8',{fatal:true}).decode(input).replace(/^\uFEFF/,''));decodedReports.set(input,rows)}return rows}
 const numeric=(value:string)=>/^\d+$/.test(value.trim());
 const signedNumber=(value:string)=>/^-?\d+$/.test(value.trim());
-function normalizeTrainerNumber(value:string){
- const digits=value.trim().replace(/[٠-٩]/g,char=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(char))).replace(/[۰-۹]/g,char=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(char)));
- return /^\d+$/.test(digits)?digits.replace(/^0+(?=\d)/,''):digits;
-}
+const normalizeTrainerNumber=(value:string)=>canonicalStaffNumber(value)||'';
 export function inspectRayat(kind:ReportKind,bytes:Uint8Array){
  if(bytes.byteLength<1||bytes.byteLength>maxRayatBytes)throw new Error('حجم التقرير يجب ألا يتجاوز ٨ ميغابايت.');
  const text=new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,'');
@@ -53,6 +38,7 @@ export function inspectRayat(kind:ReportKind,bytes:Uint8Array){
  const records=rows.slice(1);
  for(let i=0;i<records.length;i++)if(records[i].length!==headers.length)throw new Error('عدد الأعمدة غير متطابق في السطر '+(i+2)+'.');
  const get=(row:string[],name:string)=>idx(name)<0?'':row[idx(name)].trim();
+ if(kind!=='SF06'){const missing=records.findIndex(r=>!get(r,'الفصل التدريبي'));if(missing>=0)throw new Error('الفصل التدريبي مفقود في السطر '+(missing+2)+'.')}
  const terms=[...new Set(records.map(r=>get(r,'الفصل التدريبي')).filter(Boolean))];
  if(terms.length>1)throw new Error('يحتوي التقرير على أكثر من فصل تدريبي؛ ارفع كل فصل على حدة.');
  const department=records.filter(r=>get(r,'القسم').includes('الكهربائية')||get(r,'وصف القسم').includes('الكهربائية')||get(r,'اسم القسم').includes('الكهربائية'));
@@ -105,6 +91,7 @@ export function inspectRayat(kind:ReportKind,bytes:Uint8Array){
   summary.deletedCourseRows=department.filter(r=>get(r,'حالة المقرر').includes('محذوف')).length;
  }else if(kind==='SO08'){
   const fields=['المستمرون','المحرومون','المطوي قيدهم','المنسحبون','إجمالي المسجلين'] as const;
+  const seen=new Map<string,string>();for(let i=0;i<records.length;i++){const row=records[i],dimensions=JSON.stringify(headers.map((h,j)=>(fields as readonly string[]).includes(h)?null:row[j].normalize('NFKC').trim())),counts=JSON.stringify(fields.map(f=>get(row,f)));if(seen.has(dimensions))throw new Error((seen.get(dimensions)===counts?'صف مكرر':'أعداد متعارضة للأبعاد نفسها')+' في SO08، السطر '+(i+2)+'.');seen.set(dimensions,counts)}
   if(records.some(r=>fields.some(f=>!numeric(get(r,f)))))throw new Error('توجد أعداد حالات غير صالحة.');
   if(department.some(r=>fields.slice(0,4).reduce((n,f)=>n+Number(get(r,f)),0)!==Number(get(r,'إجمالي المسجلين'))))throw new Error('مجموع حالات أحد المقررات لا يساوي إجمالي المسجلين فيه.');
   summary.courses=unique(department.map(r=>get(r,'رمز المقرر')+'-'+get(r,'رقم المقرر')));
@@ -126,8 +113,8 @@ export function inspectRayat(kind:ReportKind,bytes:Uint8Array){
  return {kind,label:reportKinds[kind].label,term:terms[0]||null,summary};
 }
 
-export function trainerRayatMetrics(scheduleBytes:Uint8Array,registrationBytes:Uint8Array,staffNumber:string){
- const decode=(bytes:Uint8Array)=>parseCsv(new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,''));
+export function trainerRayatMetrics(scheduleBytes:ReportInput,registrationBytes:ReportInput,staffNumber:string){
+ const decode=decodeReport;
  const schedule=decode(scheduleBytes),registration=decode(registrationBytes);
  const scheduleHeaders=schedule[0].map(v=>v.trim()),registrationHeaders=registration[0].map(v=>v.trim());
  const val=(row:string[],headers:string[],name:string)=>{const i=headers.indexOf(name);return i<0?'':row[i].trim()};
@@ -140,19 +127,21 @@ export function trainerRayatMetrics(scheduleBytes:Uint8Array,registrationBytes:U
  return {trainees:learners.size,sections:references.size,courses:courses.size,staffLinked:sections.length>0};
 }
 
-export function trainerRayatCourses(scheduleBytes:Uint8Array,registrationBytes:Uint8Array,staffNumber:string,normalizedTerm?:string){
- const decode=(bytes:Uint8Array)=>parseCsv(new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,''));
+export function trainerRayatCourses(scheduleBytes:ReportInput,registrationBytes:ReportInput,staffNumber:string,normalizedTerm?:string){
+ const decode=decodeReport;
  const schedule=decode(scheduleBytes),registration=decode(registrationBytes),sh=schedule[0].map(v=>v.trim()),rh=registration[0].map(v=>v.trim());
  const val=(row:string[],headers:string[],name:string)=>{const i=headers.indexOf(name);return i<0?'':(row[i]||'').trim()};
  const department=(row:string[],headers:string[])=>['القسم','وصف القسم','اسم القسم'].some(n=>val(row,headers,n).includes('الكهربائية'));
  const rows=schedule.slice(1).filter(r=>department(r,sh)&&normalizeTrainerNumber(val(r,sh,'رقم المدرب'))===normalizeTrainerNumber(staffNumber));
  const sections=new Map<string,{name:string;code:string;reference:string;term:string;sectionType:string}>();
- for(const row of rows){const reference=val(row,sh,'الرقم المرجعي'),code=val(row,sh,'المقرر'),name=val(row,sh,'اسم المقرر')||code,term=normalizedTerm||val(row,sh,'الفصل التدريبي');if(!reference||!code)continue;const key=term+'::'+reference,previous=sections.get(key);if(previous&&(previous.code!==code||previous.name!==name))throw new Error('يتكرر الرقم المرجعي '+reference+' ببيانات مقررات مختلفة في تقرير الشعب.');sections.set(key,{name,code,reference,term,sectionType:val(row,sh,'نوع الشعبة')||val(row,sh,'نوع الجدولة')})}
- return [...sections].map(([key,section])=>{const registrations=registration.slice(1).filter(r=>department(r,rh)&&val(r,rh,'الرقم المرجعي')===section.reference);const ids=(predicate:(r:string[])=>boolean)=>[...new Set(registrations.filter(predicate).map(r=>val(r,rh,'رقم المتدرب')).filter(Boolean))];return {key,...section,sections:1,trainees:ids(()=>true).length,learnerIds:ids(()=>true),deprived:ids(r=>val(r,rh,'حالة تسجيل').includes('حرمان')).length,withdrawn:ids(r=>val(r,rh,'حالة تسجيل').includes('انسحاب')).length,dismissed:ids(r=>val(r,rh,'حالة تسجيل').includes('مطوي')||val(r,rh,'حالة المتدرب').includes('مطوي')).length}}).sort((a,b)=>a.name.localeCompare(b.name,'ar')||a.reference.localeCompare(b.reference));
+ for(const row of rows){const reference=val(row,sh,'الرقم المرجعي'),code=val(row,sh,'المقرر'),name=val(row,sh,'اسم المقرر')||code,term=normalizeReportTerm(normalizedTerm||val(row,sh,'الفصل التدريبي'));if(!reference||!code)continue;const key=term+'::'+reference,previous=sections.get(key);if(previous&&(previous.code!==code||previous.name!==name))throw new Error('يتكرر الرقم المرجعي '+reference+' ببيانات مقررات مختلفة في تقرير الشعب.');sections.set(key,{name,code,reference,term,sectionType:val(row,sh,'نوع الشعبة')||val(row,sh,'نوع الجدولة')})}
+ const index=new Map<string,{learners:Set<string>;deprived:Set<string>;withdrawn:Set<string>;dismissed:Set<string>}>();
+ for(const row of registration.slice(1)){if(!department(row,rh))continue;const reference=val(row,rh,'الرقم المرجعي'),term=normalizeReportTerm(val(row,rh,'الفصل التدريبي')),id=val(row,rh,'رقم المتدرب');if(!id)continue;const key=term+'::'+reference;let group=index.get(key);if(!group){group={learners:new Set(),deprived:new Set(),withdrawn:new Set(),dismissed:new Set()};index.set(key,group)}group.learners.add(id);const status=val(row,rh,'حالة تسجيل');if(status.includes('حرمان'))group.deprived.add(id);if(status.includes('انسحاب'))group.withdrawn.add(id);if(status.includes('مطوي')||val(row,rh,'حالة المتدرب').includes('مطوي'))group.dismissed.add(id)}
+ return [...sections].map(([key,section])=>{const group=index.get(key);return {key,...section,sections:1,trainees:group?.learners.size||0,learnerIds:[...(group?.learners||[])],deprived:group?.deprived.size||0,withdrawn:group?.withdrawn.size||0,dismissed:group?.dismissed.size||0}}).sort((a,b)=>a.name.localeCompare(b.name,'ar')||a.reference.localeCompare(b.reference));
 }
 
-export function rayatLinkage(scheduleBytes:Uint8Array,registrationBytes:Uint8Array,absenceBytes:Uint8Array,courseStatusBytes:Uint8Array){
- const decode=(bytes:Uint8Array)=>parseCsv(new TextDecoder('utf-8',{fatal:true}).decode(bytes).replace(/^\uFEFF/,''));
+export function rayatLinkage(scheduleBytes:ReportInput,registrationBytes:ReportInput,absenceBytes:ReportInput,courseStatusBytes:ReportInput){
+ const decode=decodeReport;
  const [schedule,registration,absence,courseStatus]=[scheduleBytes,registrationBytes,absenceBytes,courseStatusBytes].map(decode);
  const headers=[schedule[0],registration[0],absence[0],courseStatus[0]].map(row=>row.map(v=>v.trim()));
  const val=(row:string[],index:number,name:string)=>{const i=headers[index].indexOf(name);return i<0?'':row[i].trim()};
@@ -164,7 +153,7 @@ export function rayatLinkage(scheduleBytes:Uint8Array,registrationBytes:Uint8Arr
  const linkedRefs=new Set([...scheduleRefs].filter(ref=>registrationRefs.has(ref)));
  const schedulePairs=pairs(rows[0],0,'المقرر'),registrationPairs=pairs(rows[1],1,'المقرر');
  const sameCourseSections=new Set([...schedulePairs].filter(pair=>registrationPairs.has(pair)).map(pair=>pair.split('\0')[0]));
- const courseKey=(row:string[],index:number)=>val(row,index,'رقم المقرر')+'\0'+val(row,index,'اسم المقرر').normalize('NFKC').replace(/\s+/g,' ').trim();
+ const courseKey=(row:string[],index:number)=>courseIdentity(val(row,index,index===2?'كود المقرر':'رمز المقرر'),val(row,index,'رقم المقرر'));
  const absenceCourseRows=new Map<string,string[][]>();
  for(const row of rows[2]){const key=courseKey(row,2);if(!absenceCourseRows.has(key))absenceCourseRows.set(key,[]);absenceCourseRows.get(key)!.push(row)}
  const statusCourses=new Set(rows[3].map(row=>courseKey(row,3)).filter(key=>!key.startsWith('\0')));

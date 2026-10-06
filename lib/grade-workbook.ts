@@ -1,26 +1,61 @@
-export type GradeSheet={name:string;rows:string[][]};
-export function readCsv(text:string){const rows:string[][]=[];let row:string[]=[],cell='',quoted=false;for(let i=0;i<text.length;i++){const c=text[i];if(quoted){if(c==='"'&&text[i+1]==='"'){cell+='"';i++}else if(c==='"')quoted=false;else cell+=c}else if(c==='"')quoted=true;else if(c===','){row.push(cell);cell=''}else if(c==='\n'||c==='\r'){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell=''}else cell+=c}if(quoted)throw new Error('تنسيق CSV غير مكتمل.');row.push(cell);if(row.some(Boolean))rows.push(row);return rows}
+import {readCsv} from './csv';
+import {openZip} from './zip';
+export {readCsv} from './csv';
+export const gradeParserVersion='3.0.0',gradeRowLimit=2000;
+export type GradeSheet={name:string;rows:string[][];cellTypes?:Record<string,string>};
 export async function readGradeWorkbook(file:File):Promise<GradeSheet[]>{
- if(file.size>10*1024*1024)throw new Error('الحد الأعلى لحجم الملف ١٠ ميغابايت.');
- if(file.name.toLowerCase().endsWith('.csv'))return [{name:'ورقة CSV',rows:readCsv((await file.text()).replace(/^\uFEFF/,''))}];
+ if(file.size>10*1024*1024||!file.size)throw new Error('اختر ملفًا غير فارغ حتى ١٠ ميغابايت.');
+ const buffer=await file.arrayBuffer(),decoder=new TextDecoder('utf-8',{fatal:true});
+ if(file.name.toLowerCase().endsWith('.csv')){const text=decoder.decode(buffer).replace(/^\uFEFF/,'');if(text.includes('\0'))throw new Error('ملف CSV ليس نصًا صالحًا.');return [{name:'ورقة CSV',rows:readCsv(text,{rows:20000,columns:500,cells:250000})}]}
  if(!file.name.toLowerCase().endsWith('.xlsx'))throw new Error('احفظ الملف بصيغة XLSX أو CSV ثم أعد المحاولة.');
- const buffer=await file.arrayBuffer(),view=new DataView(buffer);let end=-1;
- for(let p=view.byteLength-22;p>=Math.max(0,view.byteLength-65557);p--)if(view.getUint32(p,true)===0x06054b50){end=p;break}
- if(end<0)throw new Error('تعذر قراءة بنية ملف Excel.');
- const files=new Map<string,{method:number;size:number;unpacked:number;offset:number}>();let p=view.getUint32(end+16,true),xmlSize=0;
- for(let i=0;i<view.getUint16(end+10,true);i++){if(view.getUint32(p,true)!==0x02014b50)throw new Error('بنية الملف غير صالحة.');const length=view.getUint16(p+28,true),name=new TextDecoder().decode(new Uint8Array(buffer,p+46,length));const entry={method:view.getUint16(p+10,true),size:view.getUint32(p+20,true),unpacked:view.getUint32(p+24,true),offset:view.getUint32(p+42,true)};if(/\.xml$|\.rels$/.test(name))xmlSize+=entry.unpacked;files.set(name,entry);p+=46+length+view.getUint16(p+30,true)+view.getUint16(p+32,true)}
- if(xmlSize>40*1024*1024)throw new Error('حجم أوراق العمل بعد فك الضغط يتجاوز الحد المسموح.');
- const extract=async(name:string)=>{const f=files.get(name);if(!f)return '';if(f.unpacked>20*1024*1024)throw new Error('ورقة العمل كبيرة جدًا.');const start=f.offset+30+view.getUint16(f.offset+26,true)+view.getUint16(f.offset+28,true),compressed=buffer.slice(start,start+f.size);if(f.method===0)return new TextDecoder().decode(compressed);if(f.method!==8)throw new Error('طريقة ضغط الملف غير مدعومة.');const result=await new Response(new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).text();if(result.length>20*1024*1024)throw new Error('ورقة العمل كبيرة جدًا.');return result};
- const xml=(text:string)=>{const doc=new DOMParser().parseFromString(text,'application/xml');if(doc.getElementsByTagName('parsererror').length)throw new Error('تعذر قراءة بيانات ورقة العمل.');return doc};
- const sharedText=await extract('xl/sharedStrings.xml'),shared=sharedText?Array.from(xml(sharedText).getElementsByTagName('si')).map(si=>Array.from(si.getElementsByTagName('t')).map(t=>t.textContent||'').join('')):[];
- const relationships=xml(await extract('xl/_rels/workbook.xml.rels')),paths=new Map(Array.from(relationships.getElementsByTagName('Relationship')).map(r=>[r.getAttribute('Id'),r.getAttribute('Target')||'']));
- const result:GradeSheet[]=[];
- for(const sheet of Array.from(xml(await extract('xl/workbook.xml')).getElementsByTagName('sheet'))){const target=paths.get(sheet.getAttribute('r:id'))||'',path=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');if(!files.has(path))continue;const rows:string[][]=[];for(const row of Array.from(xml(await extract(path)).getElementsByTagName('row'))){const index=Number(row.getAttribute('r'))-1;if(index<0||index>20000)throw new Error('عدد صفوف الورقة يتجاوز الحد المسموح.');const values:string[]=[];for(const cell of Array.from(row.getElementsByTagName('c'))){const letters=(cell.getAttribute('r')||'A1').match(/^[A-Z]+/)?.[0]||'A';let column=0;for(const letter of letters)column=column*26+letter.charCodeAt(0)-64;if(column>500)continue;const type=cell.getAttribute('t'),v=cell.getElementsByTagName('v')[0]?.textContent;values[column-1]=type==='s'?shared[Number(v)]||'':type==='inlineStr'?cell.getElementsByTagName('is')[0]?.textContent||'':v??(cell.getElementsByTagName('f').length?'#NO_CACHED_VALUE':'')}rows[index]=values}result.push({name:sheet.getAttribute('name')||'ورقة عمل',rows})}
+ const zip=openZip(buffer),mainNamespaces=['http://schemas.openxmlformats.org/spreadsheetml/2006/main','http://purl.oclc.org/ooxml/spreadsheetml/main'],relationNamespaces=['http://schemas.openxmlformats.org/officeDocument/2006/relationships','http://purl.oclc.org/ooxml/officeDocument/relationships'];let markup=0,cells=0;
+ const parse=typeof DOMParser!=='undefined'?new DOMParser():new (await import('@xmldom/xmldom')).DOMParser({onError:()=>{throw new Error('تعذر قراءة XML في ملف Excel.')}});
+ const nodes=(node:Document|Element,name:string)=>Array.from(node.getElementsByTagNameNS(node.nodeType===9?(node as Document).documentElement.namespaceURI:(node as Element).namespaceURI,name));
+ const readXml=async(name:string,root:string,namespaces=mainNamespaces)=>{
+  const bytes=await zip.extract(name);if(bytes.byteLength>1024*1024)throw new Error('جزء Excel كبير؛ صدّر ورقة الدرجات المطلوبة وحدها أو بصيغة CSV.');
+  const text=decoder.decode(bytes);if(/<!DOCTYPE|<!ENTITY/i.test(text))throw new Error('تعريفات XML الخارجية غير مدعومة.');
+  let count=0;for(let i=0;i<text.length;i++)if(text[i]==='<'&&!['/','!','?'].includes(text[i+1])){count++;markup++;if(count>24000||markup>30000)throw new Error('بنية Excel كثيفة؛ صدّر ورقة الدرجات المطلوبة وحدها أو بصيغة CSV.')}
+  const doc=parse.parseFromString(text,'application/xml') as unknown as Document;
+  if(!doc.documentElement||doc.getElementsByTagName('parsererror').length||doc.documentElement.localName!==root||!namespaces.includes(doc.documentElement.namespaceURI||''))throw new Error('نوع XML أو مساحة أسماء Excel غير مدعوم.');return doc;
+ };
+ const manifest=await readXml('[Content_Types].xml','Types',['http://schemas.openxmlformats.org/package/2006/content-types']);
+ const contentTypes=new Map<string,string>();for(const item of nodes(manifest,'Override')){const key=(item.getAttribute('PartName')||'').replace(/^\//,'');if(contentTypes.has(key))throw new Error('تعريف أجزاء Excel مكرر.');contentTypes.set(key,item.getAttribute('ContentType')||'')}
+ const content=(name:string,suffix:string)=>{if(contentTypes.get(name)!=='application/vnd.openxmlformats-officedocument.spreadsheetml.'+suffix+'+xml')throw new Error('تعريف نوع جزء Excel لا يطابق محتواه.')};
+ content('xl/workbook.xml','sheet.main');
+ const shared:string[]=[];if(zip.has('xl/sharedStrings.xml')){content('xl/sharedStrings.xml','sharedStrings');const doc=await readXml('xl/sharedStrings.xml','sst');for(const si of nodes(doc,'si')){if(shared.length>=10000)throw new Error('عدد نصوص Excel يتجاوز الحد المسموح.');shared.push(nodes(si,'t').map(t=>t.textContent||'').join(''))}}
+ const paths=new Map<string,string>();for(const rel of nodes(await readXml('xl/_rels/workbook.xml.rels','Relationships',['http://schemas.openxmlformats.org/package/2006/relationships']),'Relationship')){
+  const id=rel.getAttribute('Id')||'';if(!id||paths.has(id))throw new Error('معرفات روابط Excel مكررة أو ناقصة.');
+  const type=rel.getAttribute('Type')||'';paths.set(id,rel.getAttribute('TargetMode')!=='External'&&relationNamespaces.some(ns=>type===ns+'/worksheet')?rel.getAttribute('Target')||'':'');
+ }
+ const result:GradeSheet[]=[];const names=new Set<string>(),targets=new Set<string>();
+ for(const sheet of nodes(await readXml('xl/workbook.xml','workbook'),'sheet')){
+  if(result.length>=50)throw new Error('عدد أوراق Excel يتجاوز ٥٠.');
+  const id=relationNamespaces.map(ns=>sheet.getAttributeNS(ns,'id')).find(Boolean)||'',target=paths.get(id)||'',path=target.startsWith('/')?target.slice(1):'xl/'+target.replace(/^\.\//,'');if(!target||!zip.has(path)||targets.has(path))throw new Error('رابط ورقة Excel مكرر أو غير صالح.');targets.add(path);content(path,'worksheet');
+  const name=sheet.getAttribute('name')||'ورقة عمل';if(names.has(name))throw new Error('أسماء أوراق العمل مكررة.');names.add(name);
+  const rows:string[][]=[],cellTypes:Record<string,string>={};
+  for(const row of nodes(await readXml(path,'worksheet'),'row')){
+   const index=Number(row.getAttribute('r'))-1;if(!Number.isInteger(index)||index<0||index>=20000||rows[index])throw new Error('صف Excel مكرر أو يتجاوز ٢٠٠٠٠ صف.');const values:string[]=[];
+   for(const cell of nodes(row,'c')){
+    if(++cells>10000)throw new Error('عدد خلايا Excel يتجاوز ١٠٠٠٠؛ صدّر ورقة الدرجات المطلوبة وحدها.');
+    const ref=cell.getAttribute('r')||'',match=ref.match(/^([A-Z]+)(\d+)$/);if(!match||Number(match[2])!==index+1)throw new Error('عنوان خلية Excel غير متسق.');let column=0;for(const letter of match[1])column=column*26+letter.charCodeAt(0)-64;if(column>500)throw new Error('عدد أعمدة الورقة يتجاوز ٥٠٠.');if(values[column-1]!==undefined)throw new Error('خلية Excel مكررة.');
+    const type=cell.getAttribute('t')||'n',v=nodes(cell,'v')[0]?.textContent,formula=nodes(cell,'f').length>0;if(!['n','s','inlineStr','str','b','e','d'].includes(type))throw new Error('نوع خلية Excel غير معروف.');cellTypes[index+':'+(column-1)]=formula?(v&&type==='n'?'formula':'invalid-formula'):type;
+    if(type==='s'&&(!v||!/^\d+$/.test(v)||Number(v)>=shared.length))throw new Error('مرجع نص Excel غير صالح.');
+    values[column-1]=type==='s'?shared[Number(v)]:type==='inlineStr'?nodes(cell,'is')[0]?.textContent||'':v??(formula?'#NO_CACHED_VALUE':'');
+   }
+   rows[index]=values;
+  }
+  result.push({name,rows,cellTypes});
+ }
  if(!result.length)throw new Error('لا توجد أوراق عمل قابلة للقراءة.');return result;
 }
-export const gradeNumber=(text:string)=>{const v=text.trim().replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/٫/g,'.');return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(v)?Number(v):null};
+export const gradeNumber=(text:string)=>{const v=text.trim().replace(/[٠-٩]/g,c=>String('٠١٢٣٤٥٦٧٨٩'.indexOf(c))).replace(/[۰-۹]/g,c=>String('۰۱۲۳۴۵۶۷۸۹'.indexOf(c))).replace(/٫/g,'.');return /^(?:\d+(?:\.\d*)?|\.\d+)$/.test(v)?Number(v):null};
 export function gradeSuggestions(sheet:GradeSheet){const header=sheet.rows.slice(0,30).findIndex(row=>row?.some(cell=>/^(الدرجة|الدرجات|score|mark|grade)$/i.test(cell?.trim()||'')));const row=sheet.rows[header]||[];const column=row.findIndex(c=>/^(الدرجة|الدرجات|score|mark|grade)$/i.test(c?.trim()||'')),idColumn=row.findIndex(c=>/^(رقم المتدرب|الرقم التدريبي|student.?id)$/i.test(c?.trim()||''));let maximum=100;for(const r of sheet.rows.slice(0,Math.max(header,1))){const i=r?.findIndex(v=>v?.includes('الدرجة العظمى'));if(i!==undefined&&i>=0){const n=gradeNumber(r[i+1]||'');if(n&&n<=100)maximum=n}}
  let last=header+1;for(let i=header+1;i<sheet.rows.length;i++){const v=sheet.rows[i]?.[idColumn>=0?idColumn:column]||'';if(gradeNumber(v)!==null)last=i+1;else if(last>header+1)break}
  const term=sheet.rows.slice(0,4).flat().find(v=>/^14\d{4}$/.test(v?.trim()||''));return {header:Math.max(1,header+1),column,idColumn,firstRow:Math.max(2,header+2),lastRow:Math.max(header+2,last),maximum,term};
 }
-export function selectedGrades(sheet:GradeSheet,column:number,first:number,last:number,maximum:number){if(column<0||first<1||last<first||last-first>2000)throw new Error('حدد عمود الدرجات ونطاق صفوف المتدربين.');const scores:number[]=[];let excluded=0;const invalid:number[]=[];for(let i=first-1;i<last;i++){const text=(sheet.rows[i]?.[column]||'').trim();if(!text||['غائب','غ','محروم','منسحب','مطوي قيده','—','-'].includes(text)){excluded++;continue}const value=gradeNumber(text);if(value===null||value>maximum||value>100)invalid.push(i+1);else scores.push(value)}if(invalid.length)throw new Error('راجع الدرجات في الصفوف: '+invalid.slice(0,12).join('، ')+'. لا تُقبل نصوص أو درجات تتجاوز الدرجة العظمى.');if(!scores.length)throw new Error('لا توجد درجات رقمية في النطاق المختار.');return {scores,excluded}}
+export function selectedGrades(sheet:GradeSheet,column:number,first:number,last:number,maximum:number){
+ if(!Number.isInteger(column)||column<0||column>=500||!Number.isInteger(first)||!Number.isInteger(last)||first<1||last<first||last-first+1>gradeRowLimit||last>sheet.rows.length)throw new Error('حدد عمود الدرجات ونطاقًا صالحًا بحد أقصى ٢٠٠٠ صف، شاملًا المستبعدين.');
+ const scores:number[]=[];let excluded=0;const invalid:number[]=[];
+ for(let i=first-1;i<last;i++){const text=(sheet.rows[i]?.[column]||'').trim(),type=sheet.cellTypes?.[i+':'+column];if(type&&['b','e','d','invalid-formula'].includes(type)){invalid.push(i+1);continue}if(!text||['غائب','غ','محروم','منسحب','مطوي قيده','—','-'].includes(text)){excluded++;continue}const value=(type==='n'||type==='formula')&&/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)?Number(text):gradeNumber(text);if(value===null||!Number.isFinite(value)||value<0||value>maximum||value>100)invalid.push(i+1);else scores.push(value)}
+ if(invalid.length)throw new Error('راجع الدرجات في الصفوف: '+invalid.slice(0,12).join('، ')+'. لا تُقبل القيم المنطقية أو الأخطاء أو النصوص غير المعروفة أو الدرجات خارج النطاق.');if(!scores.length)throw new Error('لا توجد درجات رقمية في النطاق المختار.');return {scores,excluded};
+}

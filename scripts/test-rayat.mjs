@@ -1,3 +1,5 @@
+// Author: Abdulaziz Almalki
+import {collectPages} from './test-helpers.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
@@ -15,12 +17,12 @@ assert.equal(inspectRayat('SS01',ss).summary.remoteSections,0);
 const trainerSchedule=csv(['"الفصل التدريبي","القسم","المقرر","الرقم المرجعي","نوع الجدولة","سعة","مسجلين","متبقي","رقم المدرب"','"144710","التقنية الكهربائية","EL101","123","نظري صباحي","25","2","23","0031464"','"144710","التقنية الكهربائية","EL102","124","نظري صباحي","25","1","24","0031526"']);
 const trainerEnrollment=csv(['"الفصل التدريبي","القسم","المقرر","الرقم المرجعي","رقم المتدرب","حالة تسجيل","حالة المتدرب"','"الفصل التدريبي الأول 1448","التقنية الكهربائية","EL101","123","T01","مسجل","مستمر"','"الفصل التدريبي الأول 1448","التقنية الكهربائية","EL101","123","T02","مسجل","مستمر"','"الفصل التدريبي الأول 1448","التقنية الكهربائية","EL102","124","T03","مسجل","مستمر"']);
 assert.deepEqual(trainerRayatMetrics(trainerSchedule,trainerEnrollment,'31464'),{trainees:2,sections:1,courses:1,staffLinked:true});
-assert.deepEqual(trainerRayatCourses(trainerSchedule,trainerEnrollment,'31464'),[{key:'144710::123',name:'EL101',code:'EL101',reference:'123',term:'144710',sectionType:'نظري صباحي',sections:1,trainees:2,learnerIds:['T01','T02'],deprived:0,withdrawn:0,dismissed:0}]);
+assert.deepEqual(trainerRayatCourses(trainerSchedule,trainerEnrollment,'31464'),[{key:'1448-1::123',name:'EL101',code:'EL101',reference:'123',term:'1448-1',sectionType:'نظري صباحي',sections:1,trainees:2,learnerIds:['T01','T02'],deprived:0,withdrawn:0,dismissed:0}]);
 assert.deepEqual(trainerRayatMetrics(trainerSchedule,trainerEnrollment,'٠٣١٥٢٦'),{trainees:1,sections:1,courses:1,staffLinked:true});
 assert.equal(trainerRayatMetrics(trainerSchedule,trainerEnrollment,'99999').staffLinked,false);
-const absenceLink=csv(['"اسم القسم","رقم المقرر","اسم المقرر","أرقام شعب المقرر","حالة المقرر","إجمالي ساعات الغياب بدون عذر","رقم المتدرب"','"التقنية الكهربائية","101","رياضيات","123","حرمان بسبب غياب","4","T01"','"التقنية الكهربائية","103","لغة إنجليزية","124","انسحاب فصلي","2","T03"']);
-const statusLink=csv(['"اسم القسم","رقم المقرر","اسم المقرر"','"التقنية الكهربائية","101","رياضيات"','"التقنية الالكترونية","103","لغة إنجليزية"']);
-assert.deepEqual(rayatLinkage(trainerSchedule,trainerEnrollment,absenceLink,statusLink),{scheduleSections:2,registrationSections:2,linkedSections:2,sameCourseSections:2,absenceSections:1,linkedAbsenceSections:1,absenceCourses:2,statusCourses:1,linkedCourses:1,excludedCourses:['103'],missingAbsenceCourses:[],electricalTrainees:1,electricalDeprived:1,electricalWithUnexcusedAbsence:1,scheduledTrainers:2});
+const absenceLink=csv(['"اسم القسم","كود المقرر","رقم المقرر","اسم المقرر","أرقام شعب المقرر","حالة المقرر","إجمالي ساعات الغياب بدون عذر","رقم المتدرب"','"التقنية الكهربائية","MATH","101","رياضيات","123","حرمان بسبب غياب","4","T01"','"التقنية الكهربائية","LANG","103","لغة إنجليزية","124","انسحاب فصلي","2","T03"']);
+const statusLink=csv(['"اسم القسم","رمز المقرر","رقم المقرر","اسم المقرر"','"التقنية الكهربائية","MATH","101","اسم وصفي مختلف"','"التقنية الالكترونية","LANG","103","لغة إنجليزية"']);
+assert.deepEqual(rayatLinkage(trainerSchedule,trainerEnrollment,absenceLink,statusLink),{scheduleSections:2,registrationSections:2,linkedSections:2,sameCourseSections:2,absenceSections:1,linkedAbsenceSections:1,absenceCourses:2,statusCourses:1,linkedCourses:1,excludedCourses:['LANG'],missingAbsenceCourses:[],electricalTrainees:1,electricalDeprived:1,electricalWithUnexcusedAbsence:1,scheduledTrainers:2});
 const correctedRemote=csv(['"الفصل التدريبي","القسم","المقرر","الرقم المرجعي","نوع الجدولة","سعة","مسجلين","متبقي","رقم المدرب"','"144710","التقنية الكهربائية","EL101","65557","نظري صباحي","50","49","1","0029821"']);
 assert.deepEqual([inspectRayat('SS01',correctedRemote).summary.remoteSections,inspectRayat('SS01',correctedRemote).summary.confirmedRemoteSections,inspectRayat('SS01',correctedRemote).summary.remoteRegistrations],[1,1,49]);
 assert.throws(()=>inspectRayat('SF01',ss),/يطابق SS01/);
@@ -36,6 +38,13 @@ assert.throws(()=>inspectRayat('SO01',csv(['"كود الفصل التدريبي"
 const sf06=csv(['"رقم التواصل","اسم المتدرب","الرقم التدريبي","البرنامج","القسم","المرحلة","الوحدة التدريبية"']);
 assert.deepEqual(inspectRayat('SF06',sf06).summary,{rows:0,departmentRows:0,trainees:0});
 
+const soText=new TextDecoder().decode(so),soLines=soText.split('\r\n');
+assert.throws(()=>inspectRayat('SO08',csv([soLines[0],soLines[1],soLines[1]])),/مكرر/);
+assert.throws(()=>inspectRayat('SO08',csv([soLines[0],soLines[1],soLines[1].replace(/,\"4\"$/,',\"5\"')])),/متعارضة/);
+assert.throws(()=>inspectRayat('SO08',csv([soLines[0],soLines[1].replace('الفصل التدريبي الأول 1448','')])),/الفصل/);
+const distinctCodes=inspectRayat('SO08',csv([soLines[0],soLines[1],soLines[1].replace('\"EL\"','\"EC\"')]));assert.equal(distinctCodes.summary.courses,2);assert.equal(distinctCodes.summary.enrolled,8);
+console.log('Rayat pure parser, canonical-term linkage, course-code identity, duplicate/conflict and missing-term checks passed.');
+if(process.env.TEST_PURE==='1')process.exit(0);
 const base=process.env.TEST_URL||'http://127.0.0.1:5173';
 assert.match(base,/^http:\/\/127\.0\.0\.1:\d+$/,'Tests must target loopback only');
 
@@ -53,7 +62,7 @@ for(const account of accounts){
   assert.equal(bad.status,400);assert.match((await bad.json()).error,/الأعمدة الناقصة/);
   const mismatched=new FormData();mismatched.set('kind','SF01');mismatched.set('file',new File([ss],'sections.csv',{type:'text/csv'}));
   const mismatch=await fetch(base+'/api/rayat',{method:'POST',headers:{Cookie:cookie,Origin:base,'X-CSRF-Token':session.csrf},body:mismatched});assert.equal(mismatch.status,400);assert.match((await mismatch.json()).error,/يطابق SS01/);
-  const after=await fetch(base+'/api/rayat',{headers:{Cookie:cookie}}).then(r=>r.json());assert.equal(after.reports.length,before.reports.length);
+  const after=await fetch(base+'/api/rayat',{headers:{Cookie:cookie}}).then(r=>r.json());assert.equal(after.total,before.total);
   const blocked=await fetch(base+'/api/rayat',{method:'POST',headers:{Cookie:cookie,Origin:base,'X-CSRF-Token':'invalid'},body:form});assert.equal(blocked.status,403);
   const term='اختبار مؤقت '+randomUUID();
   const validForm=new FormData();validForm.set('kind','SF01');validForm.set('file',new File([csv(['"الفصل التدريبي","القسم","المقرر","الرقم المرجعي","رقم المتدرب","حالة تسجيل","حالة المتدرب"',`"${term}","التقنية الكهربائية","TEST","R1","T1","مسجل","مستمر"`])],'synthetic-test.csv',{type:'text/csv'}));
@@ -61,8 +70,8 @@ for(const account of accounts){
   assert.equal(saved.status,201,JSON.stringify(await saved.clone().json()));
   const id=(await saved.json()).report.id;
   try{
-   const visible=await fetch(base+'/api/rayat',{headers:{Cookie:cookie}}).then(r=>r.json());
-   assert.equal(visible.reports.find(r=>r.id===id)?.summary.trainees,1);
+   const visible=await collectPages(async path=>{const response=await fetch(base+'/api/'+path,{headers:{Cookie:cookie}});assert.equal(response.status,200);return response.json()},'rayat','reports',{limit:2});
+   assert.equal(visible.find(r=>r.id===id)?.summary.trainees,1);
   }finally{
    const sql=`DELETE FROM audit_log WHERE target_id='${id}'; DELETE FROM rayat_reports WHERE id='${id}';`;
    const cleanDb=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js','d1','execute','DB','--local','--config','wrangler.local.json','--persist-to','.wrangler/state','--command',sql],{encoding:'utf8'});

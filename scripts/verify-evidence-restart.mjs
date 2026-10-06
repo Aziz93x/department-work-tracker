@@ -1,12 +1,14 @@
+// Author: Abdulaziz Almalki
+import {collectPages,assertLocalBase} from './test-helpers.mjs';
 import assert from 'node:assert/strict';
 import {readFileSync,writeFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
 const proof=JSON.parse(readFileSync('.local/evidence-proof.json','utf8'));
 const accounts=JSON.parse(readFileSync('.local/test-accounts.json','utf8'));
-const base='http://127.0.0.1:5173';
+const base=assertLocalBase(process.env.TEST_URL||'http://127.0.0.1:5173');
 function wrangler(args){const r=spawnSync(process.execPath,['--import','./scripts/sites-env.mjs','./node_modules/wrangler/bin/wrangler.js',...args],{encoding:'utf8'});assert.equal(r.status,0,r.stderr||r.stdout)}
 const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({username:accounts[0].username,password:accounts[0].password})});assert.equal(login.status,200);const cookie=login.headers.get('set-cookie').split(';')[0];
-const list=await fetch(base+'/api/evidence',{headers:{Cookie:cookie}});assert.equal(list.status,200);const item=(await list.json()).evidence.find(x=>x.id===proof.evidenceId);assert.ok(item);assert.equal(item.version_number,2);assert.ok(item.history.some(x=>x.review_status==='passed'));
+const getJson=async path=>{const response=await fetch(base+'/api/'+path,{headers:{Cookie:cookie}});assert.equal(response.status,200);return response.json()};const list=await collectPages(getJson,'evidence','evidence');const item=list.find(x=>x.id===proof.evidenceId);assert.ok(item);assert.equal(item.version_number,2);const history=await collectPages(getJson,'evidence/'+item.id+'/history','history');assert.ok(history.some(x=>x.review_status==='passed'&&x.version_number===1));
 const evidenceFile=await fetch(base+'/api/evidence/files/'+proof.versionIds[0],{headers:{Cookie:cookie}});assert.equal(evidenceFile.status,200);assert.ok((await evidenceFile.arrayBuffer()).byteLength>20);
 const avatarFile=await fetch(base+'/api/users/'+accounts[0].id+'/avatar',{headers:{Cookie:cookie}});assert.equal(avatarFile.status,200);assert.ok((await avatarFile.arrayBuffer()).byteLength>20);
 console.log('PASS evidence metadata, version history, private file and profile photo persisted across restart.');

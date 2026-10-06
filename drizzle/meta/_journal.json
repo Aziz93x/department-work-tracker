@@ -71,6 +71,27 @@
       "when": 1790856000000,
       "tag": "0009_trainer_file_purpose",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1791242117638,
+      "tag": "0010_integrity_and_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1791263877514,
+      "tag": "0011_demo_accounts",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1791264712778,
+      "tag": "0012_task_dates_utc",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import {canonicalStaffNumber} from './identity';
 import {z} from 'zod';
 import {usernameSchema,officeHoursSchema,type User} from './contracts';
 
@@ -13,7 +14,7 @@ export const accountTransferSchema=z.object({
   office:z.string().max(80),specialty:z.string().max(120),office_hours:officeHoursSchema
  }).strict().refine(a=>a.role==='trainer'?!!a.staff_number:a.staff_number===null,{message:'تحقق من الرقم الوظيفي ونوع الحساب.'})).min(1).max(20)
 }).strict();
-const normalize=(v:string|null|undefined)=>v?.replace(/^0+/,'')||null;
+const normalize=canonicalStaffNumber;
 export function planAccountTransfer(input:z.infer<typeof accountTransferSchema>,existing:User[],actorId:string){
  const names=new Set<string>(),numbers=new Set<string>(),targets=new Set<string>();
  return input.accounts.map(account=>{

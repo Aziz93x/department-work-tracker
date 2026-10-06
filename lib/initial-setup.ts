@@ -3,6 +3,7 @@ import {env} from 'cloudflare:workers';
 import {z} from 'zod';
 import {usernameSchema,passwordSchema} from './contracts';
 import {digest,hashPassword} from './security';
+import {limitedBytes} from './request-body';
 
 const setupSchema=z.object({
  username:usernameSchema,
@@ -19,8 +20,7 @@ export async function initializeDepartment(req:Request,db:D1Database){
   return Response.json({error:'المسار غير متاح.'},{status:404,headers:{'Cache-Control':'no-store'}});
  }
  if(!req.headers.get('content-type')?.startsWith('application/json'))return Response.json({error:'نوع الطلب غير مدعوم.'},{status:415});
- const raw=await req.text();
- if(raw.length>4096)return Response.json({error:'الطلب أكبر من المسموح.'},{status:413});
+ const raw=new TextDecoder().decode(await limitedBytes(req,4096));
  let input:z.infer<typeof setupSchema>;
  try{input=setupSchema.parse(JSON.parse(raw))}catch{return Response.json({error:'بيانات التهيئة غير صالحة.'},{status:400})}
  const existing=await db.prepare('SELECT id FROM users LIMIT 1').first();

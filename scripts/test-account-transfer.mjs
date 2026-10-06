@@ -1,10 +1,7 @@
+// Author: Abdulaziz Almalki
 import assert from 'node:assert/strict';
-import {readFileSync} from 'node:fs';
-import ts from 'typescript';
 import {randomUUID} from 'node:crypto';
-const source=readFileSync(new URL('../lib/account-transfer.ts',import.meta.url),'utf8').replace("'./contracts'",JSON.stringify(new URL('../lib/contracts.ts',import.meta.url).href)).replace("'zod'",JSON.stringify(new URL('../node_modules/zod/index.js',import.meta.url).href));
-const js=ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.ESNext,target:ts.ScriptTarget.ES2022}}).outputText;
-const {accountTransferSchema,planAccountTransfer}=await import('data:text/javascript;base64,'+Buffer.from(js).toString('base64'));
+import {accountTransferSchema,planAccountTransfer} from '../lib/account-transfer.ts';
 const actor=randomUUID(),trainer=randomUUID();
 const account={targetId:trainer,username:'0031103',display_name:'مدرب اختبار',role:'trainer',active:1,password_hash:'scrypt$16384$8$5$'+'a'.repeat(32)+'$'+'b'.repeat(64),must_change_password:1,staff_number:'31103',office:'',specialty:'',office_hours:[]};
 const existing=[{id:trainer,username:'trainer.site.test',role:'trainer',staff_number:'0031103'},{id:actor,username:'head.site.test',role:'head',staff_number:null}];

@@ -14,7 +14,7 @@ export default function RayatIndicators({data,isHead}:{data:Rayat|null;isHead:bo
    <span>مقررات SO01 المطابقة لقسم التقنية الكهربائية في SO08: <b>{number(data?.linkage?.linkedCourses??null)} / {number(data?.linkage?.absenceCourses??null)}</b></span>
    <span>مدربون مسندة لهم شعب في SS01: <b>{number(data?.linkage?.scheduledTrainers??null)}</b></span>
   </div>
-  {!!data?.linkage?.excludedCourses.length&&<p className="rayat-pending">اقتصر احتساب مؤشرات الغياب على المقررات المطابقة بالاسم والرقم لقسم التقنية الكهربائية في SO08؛ واستُبعدت رموز المقررات التي تظهر ضمن أقسام أخرى: {data.linkage.excludedCourses.join('، ')}.</p>}
+  {!!data?.linkage?.excludedCourses.length&&<p className="rayat-pending">اقتصر احتساب مؤشرات الغياب على المقررات المطابقة بالرمز والرقم لقسم التقنية الكهربائية في SO08؛ واستُبعدت رموز المقررات التي تظهر ضمن أقسام أخرى: {data.linkage.excludedCourses.join('، ')}.</p>}
   <div className="rayat-indicator-content">
    <div className="rayat-risk-chart"><IndicatorChart title="حالات المتدربين في SF01" labels={items.map(item=>item.label)} series={[{label:'عدد المتدربين',values:items.map(item=>item.value)}]} /></div>
    <div className="rayat-risk-grid">{items.map(item=><article key={item.label}><strong>{number(item.value)}</strong><span>{item.label}</span></article>)}</div>

@@ -1,3 +1,4 @@
+// Author: Abdulaziz Almalki
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {spawnSync} from 'node:child_process';
