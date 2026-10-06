@@ -81,3 +81,4 @@ textarea{font:inherit}label:has(input[type=checkbox]),label:has(input[type=radio
 @media print{.pagination-actions,.upload-queue,.evidence-uploader,.context-note,.list-filters{display:none!important}.portfolio-table td:first-child,.portfolio-table th:first-child{position:static}.trainer-v2 .achievement-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.task-list article{break-inside:avoid}.trainer-v2{font-size:12pt}}
 
 .account-avatar,.account-avatar>span{color:#fff!important}
+@media(max-width:1023px){.topbar>div{min-width:0}.topbar .header-account>div{display:none}.topbar>div:last-child>button{padding-inline:9px}.topbar>div:last-child>button>span{display:none}.topbar>div:first-child>b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
